@@ -69,10 +69,12 @@ Images are auto-detected by extension (png, jpg, jpeg, gif, webp, svg, bmp, ico)
 
 ### Image Alignment
 
+Alignment is determined by spaces before the `|` (or `}}` if no title):
+
 ```
-{{s3://my-bucket/images/photo.jpg }}            // Left aligned (space on right)
-{{ s3://my-bucket/images/photo.jpg}}            // Right aligned (space on left)
-{{ s3://my-bucket/images/photo.jpg }}           // Centered (spaces on both sides)
+{{s3://my-bucket/images/photo.jpg |Caption}}    // Left aligned (space before |)
+{{ s3://my-bucket/images/photo.jpg|Caption}}    // Right aligned (space after {{)
+{{ s3://my-bucket/images/photo.jpg |Caption}}   // Centered (both spaces)
 ```
 
 ### Image Options
@@ -89,7 +91,7 @@ Use `&` to combine multiple parameters:
 
 ```
 {{s3://my-bucket/images/photo.jpg?200&nolink}}
-{{ s3://my-bucket/images/photo.jpg?300x200&nolink|Photo caption }}
+{{ s3://my-bucket/images/photo.jpg?300x200&nolink |Photo caption}}   // Centered
 ```
 
 ## AWS IAM Policy

@@ -31,48 +31,60 @@ class syntax_plugin_s3presigned extends DokuWiki_Syntax_Plugin {
     }
 
     public function handle($match, $state, $pos, Doku_Handler $handler) {
+        // Remove {{ and }}
+        $content = substr($match, 2, -2);
+
         // Check alignment based on spaces (DokuWiki style)
-        // {{ s3://... }} = center, {{s3://... }} = left, {{ s3://...}} = right
+        // Space after {{ = right indicator, space before | (or }}) = left indicator
+        // {{ s3://path |title}} = center, {{s3://path |title}} = left, {{ s3://path|title}} = right
+        $hasLeftSpace = (substr($content, 0, 1) === ' ');
+
+        // Check for space before | or at end (before }})
+        $pipePos = strpos($content, '|');
+        if ($pipePos !== false) {
+            $hasRightSpace = (substr($content, $pipePos - 1, 1) === ' ');
+        } else {
+            $hasRightSpace = (substr($content, -1) === ' ');
+        }
+
         $align = 'none';
-        if (substr($match, 0, 3) === '{{ ' && substr($match, -3) === ' }}') {
+        if ($hasLeftSpace && $hasRightSpace) {
             $align = 'center';
-        } elseif (substr($match, 0, 3) === '{{ ') {
+        } elseif ($hasLeftSpace) {
             $align = 'right';
-        } elseif (substr($match, -3) === ' }}') {
+        } elseif ($hasRightSpace) {
             $align = 'left';
         }
 
-        // Remove {{ and }} (with possible spaces)
-        $match = trim(substr($match, 2, -2));
-
-        // Remove s3:// prefix
-        $match = substr($match, 5);
+        // Trim and remove s3:// prefix
+        $content = trim($content);
+        $content = substr($content, 5); // Remove s3://
 
         // Parse title (after |)
         $title = null;
-        $pipePos = strpos($match, '|');
+        $pipePos = strpos($content, '|');
         if ($pipePos !== false) {
-            $title = trim(substr($match, $pipePos + 1));
-            $match = substr($match, 0, $pipePos);
+            $title = trim(substr($content, $pipePos + 1));
+            $content = trim(substr($content, 0, $pipePos));
         }
 
         // Parse parameters (after ?)
         $params = array();
-        $questionPos = strpos($match, '?');
+        $questionPos = strpos($content, '?');
         if ($questionPos !== false) {
-            $paramStr = substr($match, $questionPos + 1);
-            $match = substr($match, 0, $questionPos);
+            $paramStr = substr($content, $questionPos + 1);
+            $content = substr($content, 0, $questionPos);
             $params = $this->parseParams($paramStr);
         }
 
         // Split by first slash: bucket/object-path
-        $slashPos = strpos($match, '/');
+        $slashPos = strpos($content, '/');
         if ($slashPos === false) {
             return false;
         }
 
-        $bucket = trim(substr($match, 0, $slashPos));
-        $object = trim(substr($match, $slashPos + 1));
+        $bucket = trim(substr($content, 0, $slashPos));
+        $object = trim(substr($content, $slashPos + 1));
 
         return array(
             'bucket' => $bucket,
@@ -172,11 +184,21 @@ class syntax_plugin_s3presigned extends DokuWiki_Syntax_Plugin {
      * Render an image with alignment and sizing options
      */
     private function renderImage($renderer, $url, $alt, $align, $params) {
+        // Determine image class based on alignment
+        $imgClass = 'media';
+        if ($align === 'center') {
+            $imgClass = 'mediacenter';
+        } elseif ($align === 'left') {
+            $imgClass = 'medialeft';
+        } elseif ($align === 'right') {
+            $imgClass = 'mediaright';
+        }
+
         // Build img tag attributes
         $imgAttrs = array(
             'src' => $url,
             'alt' => $alt,
-            'class' => 'media'
+            'class' => $imgClass
         );
 
         if ($params['width']) {
@@ -194,41 +216,13 @@ class syntax_plugin_s3presigned extends DokuWiki_Syntax_Plugin {
 
         $img = '<img' . $attrStr . ' loading="lazy" />';
 
-        // Determine wrapper class for alignment
-        $wrapClass = 'media';
-        if ($align === 'center') {
-            $wrapClass .= ' mediacenter';
-        } elseif ($align === 'left') {
-            $wrapClass .= ' medialeft';
-        } elseif ($align === 'right') {
-            $wrapClass .= ' mediaright';
-        }
-
         // nolink: just the image, no link wrapper
         if ($params['nolink']) {
-            if ($align === 'center') {
-                $renderer->doc .= '<div class="' . $wrapClass . '">' . $img . '</div>';
-            } else {
-                $renderer->doc .= '<span class="' . $wrapClass . '">' . $img . '</span>';
-            }
+            $renderer->doc .= $img;
         }
-        // direct: link directly to the image URL
-        elseif ($params['direct']) {
-            $link = '<a href="' . hsc($url) . '" class="' . $wrapClass . '" target="_blank">' . $img . '</a>';
-            if ($align === 'center') {
-                $renderer->doc .= '<div class="' . $wrapClass . '">' . $link . '</div>';
-            } else {
-                $renderer->doc .= $link;
-            }
-        }
-        // default: link to the image (same as direct for S3)
+        // default: wrap in link
         else {
-            $link = '<a href="' . hsc($url) . '" class="' . $wrapClass . '" target="_blank">' . $img . '</a>';
-            if ($align === 'center') {
-                $renderer->doc .= '<div class="' . $wrapClass . '">' . $link . '</div>';
-            } else {
-                $renderer->doc .= $link;
-            }
+            $renderer->doc .= '<a href="' . hsc($url) . '" class="media" target="_blank">' . $img . '</a>';
         }
     }
 
@@ -382,10 +376,10 @@ url    https://www.dokuwiki.org/plugin:s3presigned
  * {{s3://my-bucket/images/photo.jpg?200}}          - Width 200px
  * {{s3://my-bucket/images/photo.jpg?200x150}}      - Width 200px, height 150px
  *
- * Image alignment (same as DokuWiki):
- * {{s3://my-bucket/images/photo.jpg }}             - Left aligned (space on right)
- * {{ s3://my-bucket/images/photo.jpg}}             - Right aligned (space on left)
- * {{ s3://my-bucket/images/photo.jpg }}            - Centered (spaces on both sides)
+ * Image alignment (space before | determines alignment):
+ * {{s3://my-bucket/images/photo.jpg |Caption}}     - Left aligned (space before |)
+ * {{ s3://my-bucket/images/photo.jpg|Caption}}     - Right aligned (space after {{)
+ * {{ s3://my-bucket/images/photo.jpg |Caption}}    - Centered (both spaces)
  *
  * Image options:
  * {{s3://my-bucket/images/photo.jpg?nolink}}       - Image without clickable link
@@ -393,8 +387,8 @@ url    https://www.dokuwiki.org/plugin:s3presigned
  * {{s3://my-bucket/images/photo.jpg?linkonly}}     - Show as text link, not image
  *
  * Combined parameters (use & to separate):
- * {{s3://my-bucket/images/photo.jpg?200&nolink}}   - 200px width, no link
- * {{ s3://my-bucket/images/photo.jpg?300x200&nolink|Photo }} - Centered, sized, no link, with alt
+ * {{s3://my-bucket/images/photo.jpg?200&nolink}}              - 200px width, no link
+ * {{ s3://my-bucket/images/photo.jpg?300x200&nolink |Photo}}  - Centered, sized, no link, with alt
  *
  * The plugin will render a clickable link with a presigned URL that expires
  * after the configured duration.
