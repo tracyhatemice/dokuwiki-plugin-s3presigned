@@ -1,0 +1,7 @@
+base   s3presigned
+author tracyhatemice
+email  tracyhatemice@users.noreply.github.com
+date   2026-02-02
+name   S3 Presigned URL Plugin
+desc   Generate presigned S3 URLs using {{s3://bucket/object-path}} syntax
+url    https://github.com/tracyhatemice/dokuwiki-plugin-s3presigned
