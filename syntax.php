@@ -68,8 +68,15 @@ class syntax_plugin_s3presigned extends DokuWiki_Syntax_Plugin {
             $content = trim(substr($content, 0, $pipePos));
         }
 
-        // Parse parameters (after ?)
-        $params = array();
+        // Parse parameters (after ?) - initialize with defaults
+        $params = array(
+            'width'    => null,
+            'height'   => null,
+            'nolink'   => false,
+            'direct'   => false,
+            'linkonly' => false,
+            'cache'    => null
+        );
         $questionPos = strpos($content, '?');
         if ($questionPos !== false) {
             $paramStr = substr($content, $questionPos + 1);
