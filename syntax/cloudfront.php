@@ -44,18 +44,33 @@ class syntax_plugin_s3presigned_cloudfront extends DokuWiki_Syntax_Plugin {
     }
 
     public function render($mode, Doku_Renderer $renderer, $data) {
-        if ($mode != 'xhtml') return false;
         if ($data === false) return false;
+
+        // Store cookie entries in page metadata (runs at page save time)
+        if ($mode == 'metadata') {
+            if ($data['params']['cookies']) {
+                if (!isset($renderer->meta['plugin_s3presigned_cf_cookies'])) {
+                    $renderer->meta['plugin_s3presigned_cf_cookies'] = array();
+                }
+                $renderer->meta['plugin_s3presigned_cf_cookies'][] = array(
+                    'domain' => $data['domain'],
+                    'path'   => $data['path']
+                );
+            }
+            return true;
+        }
+
+        if ($mode != 'xhtml') return false;
 
         // Disable caching since signed URLs expire
         $renderer->info['cache'] = false;
 
         $helper = $this->loadHelper('s3presigned');
 
-        // If cookies mode, store metadata for the action plugin and render unsigned URL
+        // If cookies mode, render unsigned URL (action plugin sets cookies)
         if ($data['params']['cookies']) {
-            $this->storeCookieMetadata($renderer, $data['domain'], $data['path']);
-            $url = "https://{$data['domain']}/{$data['path']}";
+            $encodedPath = implode('/', array_map('rawurlencode', explode('/', $data['path'])));
+            $url = "https://{$data['domain']}/" . ltrim($encodedPath, '/');
             $filename = basename($data['path']);
             $helper->renderOutput($renderer, $url, $filename, $data['title'], $data['align'], $data['params']);
             return true;
@@ -70,20 +85,6 @@ class syntax_plugin_s3presigned_cloudfront extends DokuWiki_Syntax_Plugin {
         }
 
         return true;
-    }
-
-    /**
-     * Store cookie metadata so the action plugin can set signed cookies
-     */
-    private function storeCookieMetadata($renderer, $domain, $path) {
-        global $ID;
-        if (!isset($GLOBALS['s3presigned_cf_cookies'])) {
-            $GLOBALS['s3presigned_cf_cookies'] = array();
-        }
-        $GLOBALS['s3presigned_cf_cookies'][] = array(
-            'domain' => $domain,
-            'path'   => $path
-        );
     }
 
     /**

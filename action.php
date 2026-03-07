@@ -17,11 +17,15 @@ class action_plugin_s3presigned extends DokuWiki_Action_Plugin {
     }
 
     /**
-     * Set CloudFront signed cookies if the current page requested them
+     * Set CloudFront signed cookies if the current page has cf:// cookie entries
+     * in its metadata (stored by the syntax plugin during metadata render).
      */
     public function handleCookies(Doku_Event $event, $param) {
-        if (empty($GLOBALS['s3presigned_cf_cookies'])) return;
+        global $ID;
         if (headers_sent()) return;
+
+        $cookieEntries = p_get_metadata($ID, 'plugin_s3presigned_cf_cookies');
+        if (empty($cookieEntries)) return;
 
         if (!function_exists('openssl_sign')) return;
 
@@ -40,7 +44,7 @@ class action_plugin_s3presigned extends DokuWiki_Action_Plugin {
 
         // Deduplicate by domain
         $domains = array();
-        foreach ($GLOBALS['s3presigned_cf_cookies'] as $entry) {
+        foreach ($cookieEntries as $entry) {
             $domains[$entry['domain']] = $entry;
         }
 
