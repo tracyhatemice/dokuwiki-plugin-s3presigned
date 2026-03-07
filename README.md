@@ -1,14 +1,16 @@
 # DokuWiki S3 Presigned URL Plugin
 
-A DokuWiki plugin that allows embedding S3 files and images using presigned URLs with the familiar `{{s3://bucket/path}}` syntax.
+A DokuWiki plugin that allows embedding S3 and CloudFront files/images using signed URLs with `{{s3://bucket/path}}` and `{{cf://domain/path}}` syntax.
 
 ## Features
 
 - Generate presigned S3 URLs for private bucket objects
+- Generate CloudFront signed URLs (RSA-SHA1) for CloudFront distributions
+- CloudFront signed cookies for serving multiple files under a path
 - Embed images directly in wiki pages
 - Support for DokuWiki-style image parameters (sizing, alignment, linking options)
 - Custom display names for links
-- AWS Signature V4 authentication (no SDK required)
+- Pure PHP implementation (no SDK required)
 
 ## Installation
 
@@ -17,6 +19,10 @@ A DokuWiki plugin that allows embedding S3 files and images using presigned URLs
    ```
    lib/plugins/s3presigned/
    ├── syntax.php
+   ├── syntax/
+   │   └── cloudfront.php
+   ├── helper.php
+   ├── action.php
    ├── plugin.info.txt
    └── conf/
        ├── default.php
@@ -27,6 +33,8 @@ A DokuWiki plugin that allows embedding S3 files and images using presigned URLs
 
 Configure the plugin in **Admin > Configuration Settings > s3presigned**:
 
+### S3 Settings
+
 | Setting | Description |
 |---------|-------------|
 | `aws_region` | AWS region (e.g., `us-west-2`) |
@@ -34,24 +42,39 @@ Configure the plugin in **Admin > Configuration Settings > s3presigned**:
 | `aws_secret_key` | AWS secret access key |
 | `url_expiration` | URL expiration time in seconds (default: 3600) |
 
+### CloudFront Settings
+
+| Setting | Description |
+|---------|-------------|
+| `cf_key_pair_id` | CloudFront Key Pair ID (from CloudFront public key) |
+| `cf_private_key_file` | Path to RSA private key PEM file on server (recommended) |
+| `cf_private_key_pem` | Direct-paste PEM private key (fallback; use `\n` for newlines) |
+| `cf_url_expiration` | Signed URL/cookie expiration in seconds (default: 3600) |
+| `cf_cookie_domain` | Domain for signed cookies (e.g., `.example.com`) |
+| `cf_cookie_path` | Path scope for signed cookies (default: `/`) |
+
+> **Note:** `cf_private_key_file` takes priority over `cf_private_key_pem`. Storing the key as a file is recommended for security. The CloudFront feature requires the PHP `openssl` extension.
+
 ### Content Security Policy
 
-If images fail to load due to CSP restrictions, add your S3 domain to `conf/local.php`:
+If images fail to load due to CSP restrictions, add your S3/CloudFront domain to `conf/local.php`:
 
 ```php
-$conf['plugin']['cspheader']['imgsrcValue'] = '\'self\' https://*.amazonaws.com data:';
+$conf['plugin']['cspheader']['imgsrcValue'] = '\'self\' https://*.amazonaws.com https://*.cloudfront.net data:';
 ```
 
 ## Usage
 
-### Files (Download Links)
+### S3 Presigned URLs
+
+#### Files (Download Links)
 
 ```
 {{s3://my-bucket/documents/report.pdf}}
 {{s3://my-bucket/documents/report.pdf|Download Report}}
 ```
 
-### Images
+#### Images
 
 Images are auto-detected by extension (png, jpg, jpeg, gif, webp, svg, bmp, ico).
 
@@ -60,14 +83,14 @@ Images are auto-detected by extension (png, jpg, jpeg, gif, webp, svg, bmp, ico)
 {{s3://my-bucket/images/photo.jpg|Alt text}}
 ```
 
-### Image Sizing
+#### Image Sizing
 
 ```
 {{s3://my-bucket/images/photo.jpg?200}}         // Width 200px
 {{s3://my-bucket/images/photo.jpg?200x150}}     // Width 200px, height 150px
 ```
 
-### Image Alignment
+#### Image Alignment
 
 Alignment is determined by spaces before the `|` (or `}}` if no title):
 
@@ -77,7 +100,7 @@ Alignment is determined by spaces before the `|` (or `}}` if no title):
 {{ s3://my-bucket/images/photo.jpg |Caption}}   // Centered (both spaces)
 ```
 
-### Image Options
+#### Image Options
 
 ```
 {{s3://my-bucket/images/photo.jpg?nolink}}      // No clickable link
@@ -85,7 +108,7 @@ Alignment is determined by spaces before the `|` (or `}}` if no title):
 {{s3://my-bucket/images/photo.jpg?linkonly}}    // Text link instead of embedded image
 ```
 
-### Combined Parameters
+#### Combined Parameters
 
 Use `&` to combine multiple parameters:
 
@@ -94,7 +117,37 @@ Use `&` to combine multiple parameters:
 {{ s3://my-bucket/images/photo.jpg?300x200&nolink |Photo caption}}   // Centered
 ```
 
+### CloudFront Signed URLs
+
+The `cf://` syntax works identically to `s3://` but generates CloudFront signed URLs instead.
+
+```
+{{cf://d111abcdef8.cloudfront.net/images/photo.jpg}}
+{{cf://d111abcdef8.cloudfront.net/images/photo.jpg|Alt text}}
+{{cf://d111abcdef8.cloudfront.net/images/photo.jpg?200x150}}
+{{ cf://d111abcdef8.cloudfront.net/images/photo.jpg |Centered}}
+{{cf://d111abcdef8.cloudfront.net/documents/report.pdf?linkonly|Download}}
+```
+
+All S3 parameters (sizing, alignment, nolink, direct, linkonly) work with CloudFront URLs.
+
+### CloudFront Signed Cookies
+
+Use the `?cookies` parameter to set CloudFront signed cookies instead of generating a signed URL. This is useful when serving multiple files under a path pattern (e.g., video segments, image galleries).
+
+```
+{{cf://d111abcdef8.cloudfront.net/videos/*?cookies}}
+```
+
+When `?cookies` is used:
+- The rendered URL is unsigned (the browser uses cookies for authentication)
+- Three cookies are set: `CloudFront-Policy`, `CloudFront-Signature`, `CloudFront-Key-Pair-Id`
+- Cookies are configured with `Secure`, `HttpOnly`, and `SameSite=None` flags
+- Configure `cf_cookie_domain` and `cf_cookie_path` in plugin settings
+
 ## AWS IAM Policy
+
+### S3 Direct Access
 
 Minimum required permissions for the IAM user:
 
@@ -111,11 +164,19 @@ Minimum required permissions for the IAM user:
 }
 ```
 
+### CloudFront Setup
+
+1. Create a CloudFront distribution with your S3 bucket as origin
+2. Create a CloudFront public key and key group
+3. Associate the key group with your distribution's cache behavior
+4. Configure the plugin with the Key Pair ID and the corresponding RSA private key
+
 ## Security Notes
 
 - Use an IAM user with minimal permissions (only `s3:GetObject` on specific buckets)
-- Set appropriate URL expiration times
-- Pages with S3 syntax are not cached to ensure fresh presigned URLs
+- For CloudFront, store the RSA private key file outside the web root
+- Set appropriate URL/cookie expiration times
+- Pages with S3/CloudFront syntax are not cached to ensure fresh signed URLs
 
 ## License
 
