@@ -171,4 +171,11 @@ class RenderRegressionTest extends DokuWikiTest
 
         $this->assertFalse($info['cache'], 'signed URLs expire, so the page must not be cached');
     }
+
+    public function testPagesWithCloudFrontSignedUrlsAreNotCached()
+    {
+        p_render('xhtml', p_get_instructions('{{cf://d111abcdef8.cloudfront.net/images/photo.jpg}}'), $info);
+
+        $this->assertFalse($info['cache'], 'signed URLs expire, so the page must not be cached');
+    }
 }

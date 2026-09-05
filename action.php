@@ -40,8 +40,9 @@ class action_plugin_s3presigned extends DokuWiki_Action_Plugin {
             try {
                 $helper->sendCloudFrontCookies($entry['domain'], $entry['path']);
             } catch (Exception $e) {
-                // a misconfigured key must not break page rendering
-                return;
+                // a misconfigured key must not break page rendering, and one
+                // domain's failure must not suppress the others' cookies
+                continue;
             }
         }
     }

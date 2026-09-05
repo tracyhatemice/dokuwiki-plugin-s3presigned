@@ -118,7 +118,8 @@ class helper_plugin_s3presigned extends DokuWiki_Plugin {
      *
      * @return bool false if headers were already sent, true once all three
      *              cookies have been issued
-     * @throws RuntimeException on unknown options or missing key material
+     * @throws RuntimeException on unknown options, missing key material, or
+     *                          RSA signing failure
      */
     public function sendCloudFrontCookies($domain, $resource, array $opts = [])
     {
