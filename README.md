@@ -145,6 +145,91 @@ When `?cookies` is used:
 - Cookies are configured with `Secure`, `HttpOnly`, and `SameSite=None` flags
 - Configure `cf_cookie_domain` and `cf_cookie_path` in plugin settings
 
+## Calling from another plugin
+
+Any DokuWiki plugin can use this plugin to sign URLs. Load the helper and call
+it; every method falls back to this plugin's configuration, and every option can
+be overridden per call.
+
+```php
+$s3 = plugin_load('helper', 's3presigned');
+if (!$s3) return; // plugin not installed or disabled
+
+// uses the configured region, credentials and expiry
+$url = $s3->signS3Url('my-bucket', 'docs/report.pdf');
+
+// or sign against a different account with a shorter lifetime
+$url = $s3->signS3Url('other-bucket', 'export.zip', [
+    'region'     => 'ap-southeast-1',
+    'access_key' => $key,
+    'secret_key' => $secret,
+    'expires'    => 300,
+]);
+```
+
+### Methods
+
+| Method | Returns |
+|---|---|
+| `signS3Url($bucket, $objectKey, $opts = [])` | Presigned S3 URL (AWS Signature V4) |
+| `signCloudFrontUrl($domain, $path, $opts = [])` | CloudFront signed URL (canned policy) |
+| `cloudFrontUrl($domain, $path)` | Unsigned CloudFront URL, for use with cookies |
+| `getCloudFrontCookies($domain, $resource, $opts = [])` | `['cookies' => [...], 'options' => [...]]` |
+| `sendCloudFrontCookies($domain, $resource, $opts = [])` | `bool` — `false` if headers were already sent |
+
+### Options
+
+Every option falls back to the plugin configuration when omitted. `expires` is
+always a duration in seconds.
+
+| Option | Methods | Falls back to |
+|---|---|---|
+| `region` | S3 | `aws_region` |
+| `access_key` | S3 | `aws_access_key` |
+| `secret_key` | S3 | `aws_secret_key` |
+| `expires` | all signing methods | `url_expiration` / `cf_url_expiration`, else 3600 |
+| `key_pair_id` | CloudFront | `cf_key_pair_id` |
+| `private_key` | CloudFront | `cf_private_key_pem` |
+| `private_key_file` | CloudFront | `cf_private_key_file` |
+| `cookie_domain` | cookies | `cf_cookie_domain` |
+| `cookie_path` | cookies | `cf_cookie_path`, else `/` |
+| `secure`, `httponly`, `samesite` | cookies | `true`, `true`, `None` |
+
+An unrecognised option key throws, rather than silently falling back to
+configuration and signing with the wrong credentials.
+
+### Signed cookies
+
+Cookies suit serving many files under one path, such as video segments. The
+resource may contain a wildcard, and the URL you render stays unsigned because
+the cookies carry the authorisation.
+
+```php
+$s3 = plugin_load('helper', 's3presigned');
+
+$s3->sendCloudFrontCookies('d111abcdef8.cloudfront.net', 'videos/*');
+$url = $s3->cloudFrontUrl('d111abcdef8.cloudfront.net', 'videos/lesson-1.m3u8');
+```
+
+To decide for yourself when the cookies are sent, use `getCloudFrontCookies()`,
+which returns the three cookie values and the options to send them with.
+
+### Errors
+
+All failures throw `\RuntimeException`, including missing credentials, an
+unreadable private key, and unrecognised options.
+
+```php
+try {
+    $url = $s3->signS3Url('my-bucket', 'docs/report.pdf');
+} catch (\Exception $e) {
+    // handle a missing or invalid configuration
+}
+```
+
+The methods are also listed inside the wiki itself on any page containing
+`~~INFO:helpermethods~~`.
+
 ## AWS IAM Policy
 
 ### S3 Direct Access
