@@ -20,7 +20,9 @@ services:
       init:
         condition: service_completed_successfully
     working_dir: /dokuwiki/_test
-    # run as the host user so no root-owned files land in the fork
+    # Bash does not export UID, and GID is not a bash variable at all, so
+    # Compose sees neither unless they are explicitly exported (e.g. `UID=$(id -u)
+    # GID=$(id -g) docker compose run ...`) and this defaults to 1000:1000.
     user: "${UID:-1000}:${GID:-1000}"
     # entrypoint (not command) so `docker compose run --rm test --filter X`
     # appends to phpunit instead of replacing it
@@ -37,7 +39,9 @@ services:
     build: ./docker
     entrypoint: ["/usr/local/bin/entrypoint-wiki"]
     ports:
-      - "8080:80"
+      # loopback-only: this serves a wiki with a hardcoded admin password and
+      # a wide-open ACL, so it must not be reachable beyond this machine
+      - "127.0.0.1:8080:80"
     volumes:
       - ${DOKUWIKI_PATH:-../../dokuwiki}:/dokuwiki-src:ro
       - wiki-root:/var/www/html

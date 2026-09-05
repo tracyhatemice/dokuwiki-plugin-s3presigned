@@ -168,14 +168,26 @@ class S3SignerTest extends TestCase
         $this->assertMatchesRegularExpression('/^[0-9a-f]{64}$/', $query['X-Amz-Signature']);
     }
 
+    /**
+     * The oracle calls time() and presign() calls time() again internally
+     * for the $now === null default, so the two calls can straddle a second
+     * boundary. Accept either second to keep the test deterministic rather
+     * than flaky.
+     */
     public function testDefaultsToCurrentTime()
     {
         $signer = new S3Signer('us-east-1', self::ACCESS_KEY, self::SECRET_KEY);
-        $expected = $this->legacyPresign(
-            'my-bucket', 'a.txt', 'us-east-1', self::ACCESS_KEY, self::SECRET_KEY, 3600, time()
+        $t = time();
+        $expectedAtT = $this->legacyPresign(
+            'my-bucket', 'a.txt', 'us-east-1', self::ACCESS_KEY, self::SECRET_KEY, 3600, $t
+        );
+        $expectedAtTPlus1 = $this->legacyPresign(
+            'my-bucket', 'a.txt', 'us-east-1', self::ACCESS_KEY, self::SECRET_KEY, 3600, $t + 1
         );
 
-        $this->assertSame($expected, $signer->presign('my-bucket', 'a.txt', 3600));
+        $actual = $signer->presign('my-bucket', 'a.txt', 3600);
+
+        $this->assertContains($actual, [$expectedAtT, $expectedAtTPlus1]);
     }
 
     public function provideMissingCredentials()

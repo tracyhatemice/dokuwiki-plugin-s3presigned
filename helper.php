@@ -24,6 +24,9 @@ class helper_plugin_s3presigned extends DokuWiki_Plugin {
     /** Option keys accepted only by the cookie methods */
     protected const CF_COOKIE_OPTIONS = ['cookie_domain', 'cookie_path', 'secure', 'httponly', 'samesite'];
 
+    /** Mirrors the url_expiration/cf_url_expiration defaults in conf/default.php */
+    protected const DEFAULT_EXPIRES = 3600;
+
     /**
      * Generate an AWS Signature V4 presigned GET URL for an S3 object.
      *
@@ -129,11 +132,12 @@ class helper_plugin_s3presigned extends DokuWiki_Plugin {
             return false;
         }
 
+        $sent = true;
         foreach ($signed['cookies'] as $name => $value) {
-            setcookie($name, $value, $signed['options']);
+            $sent = setcookie($name, $value, $signed['options']) && $sent;
         }
 
-        return true;
+        return $sent;
     }
 
     /**
@@ -203,10 +207,15 @@ class helper_plugin_s3presigned extends DokuWiki_Plugin {
      */
     protected function cloudFrontSigner(array $opts)
     {
-        return new CloudFrontSigner(
-            (string)($opts['key_pair_id'] ?? $this->getConf('cf_key_pair_id')),
-            $this->resolvePrivateKey($opts)
-        );
+        $keyPairId = (string)($opts['key_pair_id'] ?? $this->getConf('cf_key_pair_id'));
+
+        // Resolve the key only once a key pair id is present. PHP evaluates
+        // constructor arguments before the constructor body, so resolving inline
+        // would report a missing key ahead of a missing key pair id and reverse
+        // the order these misconfigurations were reported before the refactor.
+        $pem = $keyPairId === '' ? '' : $this->resolvePrivateKey($opts);
+
+        return new CloudFrontSigner($keyPairId, $pem);
     }
 
     /**
@@ -257,7 +266,7 @@ class helper_plugin_s3presigned extends DokuWiki_Plugin {
 
         $expires = (int)$this->getConf($confKey);
 
-        return $expires > 0 ? $expires : 3600;
+        return $expires > 0 ? $expires : self::DEFAULT_EXPIRES;
     }
 
     /**

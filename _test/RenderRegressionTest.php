@@ -147,6 +147,29 @@ class RenderRegressionTest extends DokuWikiTest
     }
 
     /**
+     * On a fresh install, all three CloudFront settings are empty. PHP
+     * evaluates constructor arguments before entering the constructor, so a
+     * naive helper that resolves the private key inline would report the
+     * missing key ahead of the missing key pair id, reversing the order
+     * these misconfigurations were reported before the refactor.
+     * testCloudFrontReportsAMissingKeyInline() above leaves the PEM
+     * configured and so never exercises that ordering; this clears all
+     * three settings to catch it.
+     */
+    public function testCloudFrontReportsAMissingKeyPairIdBeforeAMissingKey()
+    {
+        global $conf;
+        $conf['plugin']['s3presigned']['cf_key_pair_id'] = '';
+        $conf['plugin']['s3presigned']['cf_private_key_file'] = '';
+        $conf['plugin']['s3presigned']['cf_private_key_pem'] = '';
+
+        $html = $this->render('{{cf://d111abcdef8.cloudfront.net/images/photo.jpg}}');
+
+        $this->assertStringContainsString('class="s3-error"', $html);
+        $this->assertStringContainsString('CloudFront Key Pair ID not configured', $html);
+    }
+
+    /**
      * Exercises the same path action.php uses: metadata is rendered for a real
      * saved page and read back with p_get_metadata(). Calling p_render() with
      * the metadata mode directly would not work, since that renderer returns an

@@ -23,6 +23,8 @@ A DokuWiki plugin that allows embedding S3 and CloudFront files/images using sig
    │   └── cloudfront.php
    ├── helper.php
    ├── action.php
+   ├── S3Signer.php
+   ├── CloudFrontSigner.php
    ├── plugin.info.txt
    └── conf/
        ├── default.php
@@ -104,7 +106,7 @@ Alignment is determined by spaces before the `|` (or `}}` if no title):
 
 ```
 {{s3://my-bucket/images/photo.jpg?nolink}}      // No clickable link
-{{s3://my-bucket/images/photo.jpg?direct}}      // Direct link to image
+{{s3://my-bucket/images/photo.jpg?direct}}      // Accepted for compatibility; currently has no effect on rendering
 {{s3://my-bucket/images/photo.jpg?linkonly}}    // Text link instead of embedded image
 ```
 
@@ -129,7 +131,8 @@ The `cf://` syntax works identically to `s3://` but generates CloudFront signed 
 {{cf://d111abcdef8.cloudfront.net/documents/report.pdf?linkonly|Download}}
 ```
 
-All S3 parameters (sizing, alignment, nolink, direct, linkonly) work with CloudFront URLs.
+All S3 parameters (sizing, alignment, nolink, linkonly) work with CloudFront URLs; `?direct`
+is also accepted but, as noted above, currently has no effect.
 
 ### CloudFront Signed Cookies
 
@@ -207,6 +210,11 @@ configured and you want to override it with an inline PEM via `private_key`,
 you must also pass `private_key_file => ''` in the same call, or the
 configured file wins.
 
+`secure => false` combined with the default `samesite => 'None'` produces a
+cookie every modern browser discards: browsers require `Secure` on any cookie
+marked `SameSite=None`. If you set `secure => false`, also set
+`samesite => 'Lax'` or `'Strict'`.
+
 ### Signed cookies
 
 Cookies suit serving many files under one path, such as video segments. The
@@ -219,6 +227,20 @@ $s3 = plugin_load('helper', 's3presigned');
 $s3->sendCloudFrontCookies('d111abcdef8.cloudfront.net', 'videos/*');
 $url = $s3->cloudFrontUrl('d111abcdef8.cloudfront.net', 'videos/lesson-1.m3u8');
 ```
+
+`getCloudFrontCookies()` deliberately does not URL-encode the resource it is
+given, so a wildcard such as `videos/*` survives into the policy — but
+`cloudFrontUrl()` *does* encode each path segment, so a resource containing
+spaces or non-ASCII characters will not match the URL it builds. Keep such
+resources ASCII and free of characters that need encoding, or encode both
+sides consistently yourself.
+
+All CloudFront domains share the same three cookie names at whatever
+`cookie_domain`/`cookie_path` is configured (or passed per call), so signing
+cookies for two genuinely distinct CloudFront domains in the same
+browser/path scope means the second call's cookies overwrite the first's.
+Scope `cookie_domain`/`cookie_path` so each distribution's cookies do not
+collide, or send cookies for only one distribution per request.
 
 To decide for yourself when the cookies are sent, use `getCloudFrontCookies()`,
 which returns the three cookie values and the options to send them with.
@@ -238,6 +260,11 @@ try {
 
 The methods are also listed inside the wiki itself on any page containing
 `~~INFO:helpermethods~~`.
+
+The `$bucket`/`$domain` you pass is interpolated directly into the URL
+authority without validation. That is fine for the intended use — a
+server-side caller supplying its own configured bucket or distribution
+domain — but callers must not pass untrusted, user-supplied values.
 
 ## AWS IAM Policy
 
@@ -271,6 +298,41 @@ Minimum required permissions for the IAM user:
 - For CloudFront, store the RSA private key file outside the web root
 - Set appropriate URL/cookie expiration times
 - Pages with S3/CloudFront syntax are not cached to ensure fresh signed URLs
+
+## Development
+
+The test suite runs inside Docker against a real DokuWiki checkout, so it
+needs a DokuWiki fork on disk:
+
+- By default it is expected at `../../dokuwiki` relative to this plugin
+  directory. Set `DOKUWIKI_PATH` to point elsewhere instead.
+
+Run the suite:
+
+```sh
+UID=$(id -u) GID=$(id -g) docker compose run --rm test
+```
+
+`UID` and `GID` are exported explicitly so the test container writes files
+as you rather than as `1000:1000` (Compose otherwise sees neither variable
+and falls back silently — see the comment in `docker-compose.yml`).
+
+Narrow the run to matching tests by appending `--filter`:
+
+```sh
+UID=$(id -u) GID=$(id -g) docker compose run --rm test --filter SomeTest
+```
+
+For a browsable wiki with the plugin installed, bound to the loopback
+interface only:
+
+```sh
+docker compose up wiki
+```
+
+Then open `http://localhost:8080` and log in as `admin` / `admin`. This dev
+wiki has a hardcoded admin password and a wide-open ACL — never expose it
+beyond your own machine.
 
 ## License
 
