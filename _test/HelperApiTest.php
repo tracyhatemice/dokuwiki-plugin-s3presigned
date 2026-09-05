@@ -266,15 +266,18 @@ class HelperApiTest extends DokuWikiTest
     public function provideUnknownOptionCalls()
     {
         return [
-            'signS3Url'            => ['signS3Url', ['my-bucket', 'a.txt']],
-            'signCloudFrontUrl'    => ['signCloudFrontUrl', ['cdn.example.com', 'a.mp4']],
-            'getCloudFrontCookies' => ['getCloudFrontCookies', ['cdn.example.com', 'videos/*']],
+            'signS3Url'             => ['signS3Url', ['my-bucket', 'a.txt']],
+            'signCloudFrontUrl'     => ['signCloudFrontUrl', ['cdn.example.com', 'a.mp4']],
+            'getCloudFrontCookies'  => ['getCloudFrontCookies', ['cdn.example.com', 'videos/*']],
+            'sendCloudFrontCookies' => ['sendCloudFrontCookies', ['cdn.example.com', 'videos/*']],
         ];
     }
 
     /**
      * A typo must not fall through to config and sign with the wrong
-     * credentials, which would only fail later at the CDN.
+     * credentials, which would only fail later at the CDN. This must hold
+     * for sendCloudFrontCookies() regardless of header state: validation
+     * happens before the headers_sent() guard, not after.
      *
      * @dataProvider provideUnknownOptionCalls
      */
@@ -294,6 +297,41 @@ class HelperApiTest extends DokuWikiTest
         $this->expectExceptionMessage('cookie_path');
 
         $this->helper()->signCloudFrontUrl('cdn.example.com', 'a.mp4', ['cookie_path' => '/']);
+    }
+
+    public function provideInvalidExpiresValues()
+    {
+        return [
+            'zero' => [0],
+            'negative' => [-1],
+            'non-numeric string' => ['abc'],
+        ];
+    }
+
+    /**
+     * An explicitly supplied expires must fail at the call site rather than
+     * silently coercing to the 3600-second default, which could also mask a
+     * site's deliberately configured non-default expiration.
+     *
+     * @dataProvider provideInvalidExpiresValues
+     */
+    public function testInvalidExpiresThrows($value)
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('expires');
+
+        $this->helper()->signS3Url('my-bucket', 'a.txt', ['expires' => $value]);
+    }
+
+    public function testOmittingExpiresStillFallsBackToConfig()
+    {
+        global $conf;
+        $conf['plugin']['s3presigned']['url_expiration'] = 1800;
+
+        $url = $this->helper()->signS3Url('my-bucket', 'a.txt');
+
+        parse_str(parse_url($url, PHP_URL_QUERY), $query);
+        $this->assertSame('1800', $query['X-Amz-Expires']);
     }
 
     public function testGetMethodsDescribesEveryPublicApiMethod()

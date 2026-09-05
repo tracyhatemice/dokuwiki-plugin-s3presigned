@@ -122,9 +122,12 @@ class helper_plugin_s3presigned extends DokuWiki_Plugin {
      */
     public function sendCloudFrontCookies($domain, $resource, array $opts = [])
     {
-        if (headers_sent()) return false;
-
         $signed = $this->getCloudFrontCookies($domain, $resource, $opts);
+
+        if (headers_sent()) {
+            return false;
+        }
+
         foreach ($signed['cookies'] as $name => $value) {
             setcookie($name, $value, $signed['options']);
         }
@@ -230,11 +233,28 @@ class helper_plugin_s3presigned extends DokuWiki_Plugin {
     }
 
     /**
-     * Resolve the lifetime in seconds, falling back to config then to one hour
+     * Resolve the lifetime in seconds, falling back to config then to one hour.
+     *
+     * Strict on an explicitly supplied option (a caller's mistake must fail at
+     * the call site, not silently coerce to a default), lenient on the config
+     * fallback (a site that has cleared the setting should still get a sane
+     * default).
+     *
+     * @throws RuntimeException if an explicitly supplied expires is not a
+     *                          positive integer
      */
     protected function resolveExpires(array $opts, $confKey)
     {
-        $expires = (int)($opts['expires'] ?? $this->getConf($confKey));
+        if (array_key_exists('expires', $opts)) {
+            $expires = filter_var($opts['expires'], FILTER_VALIDATE_INT);
+            if ($expires === false || $expires <= 0) {
+                throw new RuntimeException('Option "expires" must be a positive number of seconds');
+            }
+
+            return $expires;
+        }
+
+        $expires = (int)$this->getConf($confKey);
 
         return $expires > 0 ? $expires : 3600;
     }

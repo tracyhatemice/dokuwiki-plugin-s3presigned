@@ -196,7 +196,16 @@ always a duration in seconds.
 | `secure`, `httponly`, `samesite` | cookies | `true`, `true`, `None` |
 
 An unrecognised option key throws, rather than silently falling back to
-configuration and signing with the wrong credentials.
+configuration and signing with the wrong credentials. An explicitly supplied
+`expires` is held to the same standard: it must be a positive integer, or the
+call throws rather than silently falling back to the 3600-second default —
+omitting `expires` entirely is what triggers the configuration fallback.
+
+`private_key_file` takes precedence over `private_key`, on the site's
+configuration as well as per call. If a site has `cf_private_key_file`
+configured and you want to override it with an inline PEM via `private_key`,
+you must also pass `private_key_file => ''` in the same call, or the
+configured file wins.
 
 ### Signed cookies
 
