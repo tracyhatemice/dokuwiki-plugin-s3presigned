@@ -27,6 +27,16 @@ class action_plugin_s3presigned extends DokuWiki_Action_Plugin {
         $cookieEntries = p_get_metadata($ID, 'plugin_s3presigned_cf_cookies');
         if (empty($cookieEntries)) return;
 
+        $this->sendCookiesForEntries($cookieEntries);
+    }
+
+    /**
+     * Send CloudFront cookies for each distinct domain in the given metadata entries.
+     *
+     * Separated from handleCookies() so the emission path can be tested: that
+     * method's headers_sent() guard is unreachable-past in a test process.
+     */
+    protected function sendCookiesForEntries(array $cookieEntries) {
         $helper = $this->loadHelper('s3presigned');
         if (!$helper) return;
 
