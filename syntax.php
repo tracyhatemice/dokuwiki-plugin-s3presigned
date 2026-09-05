@@ -56,7 +56,7 @@ class syntax_plugin_s3presigned extends DokuWiki_Syntax_Plugin {
         $helper = $this->loadHelper('s3presigned');
 
         try {
-            $url = $this->generatePresignedUrl($data['bucket'], $data['object']);
+            $url = $helper->signS3Url($data['bucket'], $data['object']);
             $filename = basename($data['object']);
             $helper->renderOutput($renderer, $url, $filename, $data['title'], $data['align'], $data['params']);
         } catch (Exception $e) {
@@ -64,84 +64,5 @@ class syntax_plugin_s3presigned extends DokuWiki_Syntax_Plugin {
         }
 
         return true;
-    }
-
-    private function generatePresignedUrl($bucket, $objectKey) {
-        // Get configuration
-        $region = $this->getConf('aws_region');
-        $accessKey = $this->getConf('aws_access_key');
-        $secretKey = $this->getConf('aws_secret_key');
-        $expiration = $this->getConf('url_expiration') ?: 3600;
-
-        if (empty($region) || empty($accessKey) || empty($secretKey)) {
-            throw new Exception('AWS credentials not configured');
-        }
-
-        // Generate presigned URL using AWS Signature V4
-        $timestamp = time();
-        $datetime = gmdate('Ymd\THis\Z', $timestamp);
-        $date = gmdate('Ymd', $timestamp);
-        
-        $host = "{$bucket}.s3.{$region}.amazonaws.com";
-        $algorithm = 'AWS4-HMAC-SHA256';
-        $credentialScope = "{$date}/{$region}/s3/aws4_request";
-        $credential = "{$accessKey}/{$credentialScope}";
-        
-        // Properly encode the object key for the URI
-        $encodedObjectKey = implode('/', array_map('rawurlencode', explode('/', $objectKey)));
-        $canonicalUri = '/' . ltrim($encodedObjectKey, '/');
-        
-        // Build canonical query string
-        $queryParams = array(
-            'X-Amz-Algorithm' => $algorithm,
-            'X-Amz-Credential' => $credential,
-            'X-Amz-Date' => $datetime,
-            'X-Amz-Expires' => (string)$expiration,
-            'X-Amz-SignedHeaders' => 'host'
-        );
-        
-        // Sort and encode query parameters
-        ksort($queryParams);
-        $canonicalQueryString = '';
-        foreach ($queryParams as $key => $value) {
-            if ($canonicalQueryString !== '') {
-                $canonicalQueryString .= '&';
-            }
-            $canonicalQueryString .= rawurlencode($key) . '=' . rawurlencode($value);
-        }
-        
-        // Canonical headers
-        $canonicalHeaders = "host:{$host}\n";
-        $signedHeaders = 'host';
-        
-        // Create canonical request
-        $canonicalRequest = implode("\n", array(
-            'GET',
-            $canonicalUri,
-            $canonicalQueryString,
-            $canonicalHeaders,
-            $signedHeaders,
-            'UNSIGNED-PAYLOAD'
-        ));
-        
-        // String to sign
-        $stringToSign = implode("\n", array(
-            $algorithm,
-            $datetime,
-            $credentialScope,
-            hash('sha256', $canonicalRequest)
-        ));
-        
-        // Calculate signature
-        $kDate = hash_hmac('sha256', $date, 'AWS4' . $secretKey, true);
-        $kRegion = hash_hmac('sha256', $region, $kDate, true);
-        $kService = hash_hmac('sha256', 's3', $kRegion, true);
-        $kSigning = hash_hmac('sha256', 'aws4_request', $kService, true);
-        $signature = hash_hmac('sha256', $stringToSign, $kSigning);
-        
-        // Build final URL
-        $presignedUrl = "https://{$host}{$canonicalUri}?{$canonicalQueryString}&X-Amz-Signature={$signature}";
-        
-        return $presignedUrl;
     }
 }
