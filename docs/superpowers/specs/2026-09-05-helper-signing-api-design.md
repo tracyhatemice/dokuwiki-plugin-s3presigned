@@ -287,8 +287,9 @@ Differential assertions against the frozen copy of `generatePresignedUrl()` over
 a table covering plain keys, keys with spaces, unicode keys, nested paths, and
 varied regions and expiries. Structural assertions on top: path segments are
 encoded individually while separating slashes are not; canonical query
-parameters are sorted; the payload hash is `UNSIGNED-PAYLOAD`; `X-Amz-Signature`
-is 64 hex characters. Empty credentials throw.
+parameters are sorted; `X-Amz-Signature` is 64 hex characters. Empty credentials
+throw. Canonical-request internals such as the `UNSIGNED-PAYLOAD` hash are not
+observable in the output URL, so the frozen oracle is what covers them.
 
 ### _test/CloudFrontSignerTest.php
 
@@ -307,9 +308,14 @@ PEM throws.
 Extends `DokuWikiTest` with `protected $pluginsEnabled = ['s3presigned']`.
 Covers: each method reachable through `plugin_load('helper', 's3presigned')`;
 config supplies defaults; per-call options override config; an unknown option
-key throws; `expires` produces the expected absolute expiry; a URL and its
-cookies issued together share one expiry; `getMethods()` returns a descriptor
-for every public API method.
+key throws; an `expires` duration is reflected in both `X-Amz-Expires` and the
+cookies' absolute expiry; `getMethods()` returns a descriptor for every public
+API method.
+
+Config is set in `setUp()` before the helper is loaded. `PluginTrait::loadConfig()`
+binds `$this->conf` by reference to `$conf['plugin']['s3presigned']`
+(`inc/Extension/PluginTrait.php:213`), so replacing that array wholesale after a
+helper instance exists would silently detach it.
 
 ### _test/RenderRegressionTest.php
 
