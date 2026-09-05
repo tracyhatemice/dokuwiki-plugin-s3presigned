@@ -1,0 +1,9 @@
+# Docker / local dev state
+.env
+
+# PHP tooling
+.phpunit.result.cache
+vendor/
+
+# Process scratch files, not part of the plugin
+.superpowers/

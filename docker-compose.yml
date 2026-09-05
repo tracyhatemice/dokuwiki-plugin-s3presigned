@@ -1,0 +1,47 @@
+services:
+  # Docker auto-creates missing bind-mount targets as root. Since /dokuwiki
+  # below is itself a plain bind of the fork (not a managed volume), an
+  # auto-created lib/plugins/s3presigned would be created as a real,
+  # root-owned directory *inside the fork on the host* the first time the
+  # test service runs, and that owner would later block plain `git` commands.
+  # Pre-create it here, correctly owned, before test ever mounts over it.
+  init:
+    build: ./docker
+    entrypoint:
+      - /bin/sh
+      - -c
+      - mkdir -p /dokuwiki/lib/plugins/s3presigned && chown "${UID:-1000}:${GID:-1000}" /dokuwiki/lib/plugins/s3presigned
+    volumes:
+      - ${DOKUWIKI_PATH:-../../dokuwiki}:/dokuwiki
+
+  test:
+    build: ./docker
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    working_dir: /dokuwiki/_test
+    # run as the host user so no root-owned files land in the fork
+    user: "${UID:-1000}:${GID:-1000}"
+    # entrypoint (not command) so `docker compose run --rm test --filter X`
+    # appends to phpunit instead of replacing it
+    entrypoint:
+      - vendor/bin/phpunit
+      - --do-not-cache-result
+      - --group
+      - plugin_s3presigned
+    volumes:
+      - ${DOKUWIKI_PATH:-../../dokuwiki}:/dokuwiki
+      - .:/dokuwiki/lib/plugins/s3presigned
+
+  wiki:
+    build: ./docker
+    entrypoint: ["/usr/local/bin/entrypoint-wiki"]
+    ports:
+      - "8080:80"
+    volumes:
+      - ${DOKUWIKI_PATH:-../../dokuwiki}:/dokuwiki-src:ro
+      - wiki-root:/var/www/html
+      - .:/var/www/html/lib/plugins/s3presigned
+
+volumes:
+  wiki-root:
