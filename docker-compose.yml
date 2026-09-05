@@ -33,7 +33,7 @@ services:
       - plugin_s3presigned
     volumes:
       - ${DOKUWIKI_PATH:-../../dokuwiki}:/dokuwiki
-      - .:/dokuwiki/lib/plugins/s3presigned
+      - ./lib/plugins/s3presigned:/dokuwiki/lib/plugins/s3presigned
 
   wiki:
     build: ./docker
@@ -45,7 +45,7 @@ services:
     volumes:
       - ${DOKUWIKI_PATH:-../../dokuwiki}:/dokuwiki-src:ro
       - wiki-root:/var/www/html
-      - .:/var/www/html/lib/plugins/s3presigned
+      - ./lib/plugins/s3presigned:/var/www/html/lib/plugins/s3presigned
 
 volumes:
   wiki-root:

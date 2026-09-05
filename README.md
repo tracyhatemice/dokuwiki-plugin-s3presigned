@@ -14,8 +14,12 @@ A DokuWiki plugin that allows embedding S3 and CloudFront files/images using sig
 
 ## Installation
 
-1. Copy the plugin folder to `lib/plugins/s3presigned/`
-2. The directory structure should be:
+This repository mirrors the DokuWiki tree, so the plugin can be copied straight
+across:
+
+1. Copy `lib/plugins/s3presigned/` from this repository into your wiki's
+   `lib/plugins/` directory.
+2. The installed structure should be:
    ```
    lib/plugins/s3presigned/
    ├── syntax.php
@@ -26,10 +30,15 @@ A DokuWiki plugin that allows embedding S3 and CloudFront files/images using sig
    ├── S3Signer.php
    ├── CloudFrontSigner.php
    ├── plugin.info.txt
+   ├── .htaccess
    └── conf/
        ├── default.php
        └── metadata.php
    ```
+   The directory name must stay `s3presigned`: DokuWiki matches it against
+   `base` in `plugin.info.txt` and refuses to load the plugin otherwise. The
+   repository also carries `lib/plugins/s3presigned/_test/`, which is only
+   needed to run the test suite and can be left out of an installation.
 
 ## Configuration
 
@@ -304,8 +313,14 @@ Minimum required permissions for the IAM user:
 The test suite runs inside Docker against a real DokuWiki checkout, so it
 needs a DokuWiki fork on disk:
 
-- By default it is expected at `../../dokuwiki` relative to this plugin
-  directory. Set `DOKUWIKI_PATH` to point elsewhere instead.
+- By default it is expected at `../../dokuwiki` relative to the repository
+  root, where `docker-compose.yml` lives. Set `DOKUWIKI_PATH` to point
+  elsewhere instead.
+
+Plugin code lives under `lib/plugins/s3presigned/`, mirroring where DokuWiki
+loads it from; `README.md`, `docs/`, `docker/` and `docker-compose.yml` stay at
+the repository root and are not part of an installation. The test service
+bind-mounts only the plugin directory into the wiki.
 
 Run the suite:
 
