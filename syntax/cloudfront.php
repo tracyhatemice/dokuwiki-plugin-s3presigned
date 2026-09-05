@@ -66,104 +66,22 @@ class syntax_plugin_s3presigned_cloudfront extends DokuWiki_Syntax_Plugin {
         $renderer->info['cache'] = false;
 
         $helper = $this->loadHelper('s3presigned');
+        $filename = basename($data['path']);
 
         // If cookies mode, render unsigned URL (action plugin sets cookies)
         if ($data['params']['cookies']) {
-            $encodedPath = implode('/', array_map('rawurlencode', explode('/', $data['path'])));
-            $url = "https://{$data['domain']}/" . ltrim($encodedPath, '/');
-            $filename = basename($data['path']);
+            $url = $helper->cloudFrontUrl($data['domain'], $data['path']);
             $helper->renderOutput($renderer, $url, $filename, $data['title'], $data['align'], $data['params']);
             return true;
         }
 
         try {
-            $url = $this->generateSignedUrl($data['domain'], $data['path']);
-            $filename = basename($data['path']);
+            $url = $helper->signCloudFrontUrl($data['domain'], $data['path']);
             $helper->renderOutput($renderer, $url, $filename, $data['title'], $data['align'], $data['params']);
         } catch (Exception $e) {
             $renderer->doc .= '<span class="s3-error">Error: ' . hsc($e->getMessage()) . '</span>';
         }
 
         return true;
-    }
-
-    /**
-     * Generate a CloudFront signed URL using RSA-SHA1
-     */
-    private function generateSignedUrl($domain, $objectPath) {
-        if (!function_exists('openssl_sign')) {
-            throw new Exception('OpenSSL extension is required for CloudFront signed URLs');
-        }
-
-        $keyPairId = $this->getConf('cf_key_pair_id');
-        if (empty($keyPairId)) {
-            throw new Exception('CloudFront Key Pair ID not configured');
-        }
-
-        $privateKey = $this->loadPrivateKey();
-        $expiration = time() + ($this->getConf('cf_url_expiration') ?: 3600);
-
-        $encodedPath = implode('/', array_map('rawurlencode', explode('/', $objectPath)));
-        $url = "https://{$domain}/" . ltrim($encodedPath, '/');
-
-        // Build canned policy
-        $policy = '{"Statement":[{"Resource":"' . $url . '","Condition":{"DateLessThan":{"AWS:EpochTime":' . $expiration . '}}}]}';
-
-        $signature = $this->rsaSign($policy, $privateKey);
-
-        return $url
-            . (strpos($url, '?') !== false ? '&' : '?')
-            . 'Expires=' . $expiration
-            . '&Signature=' . $this->urlSafeBase64($signature)
-            . '&Key-Pair-Id=' . $keyPairId;
-    }
-
-    /**
-     * Load the RSA private key from file or config
-     */
-    private function loadPrivateKey() {
-        $keyFile = $this->getConf('cf_private_key_file');
-        if (!empty($keyFile)) {
-            if (!file_exists($keyFile)) {
-                throw new Exception('CloudFront private key file not found: ' . $keyFile);
-            }
-            $pem = file_get_contents($keyFile);
-        } else {
-            $pem = $this->getConf('cf_private_key_pem');
-            if (!empty($pem)) {
-                // Handle newlines stored as literal \n in config
-                $pem = str_replace('\\n', "\n", $pem);
-            }
-        }
-
-        if (empty($pem)) {
-            throw new Exception('CloudFront private key not configured (set file path or paste PEM)');
-        }
-
-        $key = openssl_pkey_get_private($pem);
-        if ($key === false) {
-            throw new Exception('Invalid RSA private key: ' . openssl_error_string());
-        }
-
-        return $key;
-    }
-
-    /**
-     * Sign data with RSA-SHA1
-     */
-    private function rsaSign($data, $privateKey) {
-        $signature = '';
-        if (!openssl_sign($data, $signature, $privateKey, OPENSSL_ALGO_SHA1)) {
-            throw new Exception('RSA signing failed: ' . openssl_error_string());
-        }
-        return $signature;
-    }
-
-    /**
-     * CloudFront URL-safe base64 encoding
-     * Replaces + with -, = with _, / with ~
-     */
-    private function urlSafeBase64($data) {
-        return strtr(base64_encode($data), '+/=', '-~_');
     }
 }
