@@ -265,22 +265,42 @@ Tests live in `_test/`, which the fork's `phpunit.xml` already picks up through
 `../lib/plugins/*/_test/`. Every class carries `@group plugin_s3presigned` and
 `@group plugins`.
 
+### Differential testing against the current implementation
+
+This is a refactor of working, deployed code, so the primary obligation is
+proving behaviour did not change. Amazon's official SigV4 test suite covers
+`Authorization`-header signing rather than the query-string presigned form, and
+the commonly cited presigned example targets the legacy `bucket.s3.amazonaws.com`
+host instead of the regional host this plugin builds, so it cannot serve as a
+known-answer vector here without the endpoint override that is out of scope.
+
+Instead each signer test carries a **frozen oracle**: the body of the current
+private method, copied verbatim, with `time()` replaced by an injected
+timestamp. The test asserts the new signer's output is byte-identical to the
+oracle's across a table of inputs. The oracle is marked as frozen and must never
+be "fixed" to match a change in the signer — a divergence means the refactor
+altered behaviour.
+
 ### _test/S3SignerTest.php
 
-Verified against Amazon's published SigV4 query-string known-answer vectors with
-a pinned `$now`, so a signature regression is caught rather than merely a change
-in self-consistency. Also covers: object keys with spaces and unicode encode per
-segment and do not encode the separating slashes; empty credentials throw;
-canonical query parameters are sorted.
+Differential assertions against the frozen copy of `generatePresignedUrl()` over
+a table covering plain keys, keys with spaces, unicode keys, nested paths, and
+varied regions and expiries. Structural assertions on top: path segments are
+encoded individually while separating slashes are not; canonical query
+parameters are sorted; the payload hash is `UNSIGNED-PAYLOAD`; `X-Amz-Signature`
+is 64 hex characters. Empty credentials throw.
 
 ### _test/CloudFrontSignerTest.php
 
 Generates a throwaway 2048-bit RSA key in `setUp()` via `openssl_pkey_new()`, so
-no key material is committed. Covers: `openssl_verify()` accepts the produced
-signature against the canned policy; encoded output contains none of `+`, `/`,
-`=`; the canned policy JSON carries the exact resource and expiry; cookie
-policies keep `*` unencoded while URLs encode path segments; a malformed PEM
-throws.
+no key material is committed. Differential assertions against frozen copies of
+`generateSignedUrl()` and the policy construction in `handleCookies()`. Because
+RSA-SHA1 is deterministic for a fixed key and message, these comparisons are
+byte-exact. Correctness assertions on top: `openssl_verify()` accepts the
+produced signature against the canned policy; encoded output contains none of
+`+`, `/`, `=`; the canned policy JSON carries the exact resource and expiry;
+cookie policies keep `*` unencoded while URLs encode path segments; a malformed
+PEM throws.
 
 ### _test/HelperApiTest.php
 
